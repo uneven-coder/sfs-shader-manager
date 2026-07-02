@@ -1104,8 +1104,13 @@ namespace shaders.Lib
             var pack = ShaderPackRegistry.Get(_selectedPackName);
             if (pack == null)
             {
-                Debug.LogWarning($"[ShaderPackManager] Persisted pack '{_selectedPackName}' was not found.");
-                _selectedPackName = null;
+                // Don't clear the persisted name here: this runs once synchronously during
+                // Initialize(), before any part-pack's CodeAssembly has necessarily finished
+                // loading via the async Assembly.Load(byte[]) path (see CodeAssemblyLoadHooks).
+                // Clearing on this first miss would permanently discard the selection before the
+                // NotifyRegistriesRefreshed() retry — fired once that pack's assembly does load —
+                // ever gets a chance to find it.
+                Debug.LogWarning($"[ShaderPackManager] Persisted pack '{_selectedPackName}' was not found yet; will retry once its assembly loads.");
                 return;
             }
 

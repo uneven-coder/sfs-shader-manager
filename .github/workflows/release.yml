@@ -54,10 +54,8 @@ jobs:
       - name: Package mod release
         run: |
           set -e
-          mkdir -p dist/mod/sfs-shaders
-          cp "${{ steps.dll.outputs.path }}" dist/mod/sfs-shaders/
-          cp README* dist/mod/sfs-shaders/ 2>/dev/null || true
-          (cd dist/mod && zip -r "../../sfs-shaders-${{ steps.modversion.outputs.version }}.zip" sfs-shaders)
+          mkdir -p dist
+          cp "${{ steps.dll.outputs.path }}" "dist/sfs-shaders.dll"
 
       - name: Clone SFS-Pack-Builder
         run: git clone --depth 1 https://github.com/uneven-coder/SFS-Pack-Builder.git sdk-src
@@ -112,5 +110,5 @@ jobs:
             ---
             Commit: ${{ github.sha }}
           files: |
-            sfs-shaders-${{ steps.modversion.outputs.version }}.zip
+            dist/sfs-shaders.dll
             sfs-shaders-sdk-${{ steps.modversion.outputs.version }}.zip

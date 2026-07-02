@@ -3,6 +3,8 @@ using UnityEngine;
 using System;
 using GeneratedUI;
 using shaders.Lib;
+using System.Collections.Generic;
+using SFS.IO;
 
 namespace shaders
 {
@@ -14,6 +16,14 @@ namespace shaders
         public override string ModVersion => "2.2.0";
         public override string Description => "Shader manager/runtime.";
         public override string MinimumGameVersionNecessary => "1.5.6";
+
+        public Dictionary<string, FilePath> UpdatableFiles => new Dictionary<string, FilePath>
+        {
+            {
+                "https://github.com/uneven-coder/sfs-shader-manager/releases/latest/download/sfs-shaders.dll",
+                new FolderPath(ModFolder).ExtendToFile("sfs-shaders.dll")
+            }
+        };
 
         public override void Early_Load()
         {
