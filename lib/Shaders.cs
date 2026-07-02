@@ -1622,6 +1622,30 @@ namespace shaders.Lib
         {
             ShaderRouteApi.SetCurrentScene(SceneManager.GetActiveScene().name);
             shaders.Lib.Renders.OverlayDispatcher.ClearAllEffects(clearSharedState: false);
+            ResetActivePackModuleState();
+        }
+
+
+        private static void ResetActivePackModuleState()
+        {
+            var pack = ShaderPackRegistry.ActivePack;
+            if (pack == null)
+                return;
+
+            foreach (var module in pack.GetShaders())
+            {
+                if (module == null)
+                    continue;
+
+                if (module is IRestorableShaderModule restorable)
+                {
+                    restorable.RestoreTouchedState();
+                    continue;
+                }
+
+                var restoreMethod = module.GetType().GetMethod("RestoreMaterials", BindingFlags.Public | BindingFlags.Instance);
+                restoreMethod?.Invoke(module, null);
+            }
         }
 
         public static IShaderPack GetActivePack() => 

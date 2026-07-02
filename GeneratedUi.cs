@@ -1443,6 +1443,43 @@ namespace GeneratedUI
             public bool SuppressCleanup;
         }
 
+        /// <summary>
+        /// Commits a config text field's pending value on Enter or on losing focus. SFS.UI.ModGUI's
+        /// TextInput only exposes a single per-keystroke onChange callback, no true submit/blur
+        /// event — the same gap BP-Editor's NumSubmitTracker works around for the same UI framework.
+        /// </summary>
+        private sealed class FieldCommitTracker : MonoBehaviour
+        {
+            public Func<string>? GetPending;
+            public Action? OnCommit;
+            private bool _wasSelected;
+
+            private void Update()
+            {
+                var selected = IsSelected();
+
+                if (selected && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
+                    OnCommit?.Invoke();
+                else if (_wasSelected && !selected)
+                    OnCommit?.Invoke();
+
+                _wasSelected = selected;
+            }
+
+            private bool IsSelected()
+            {
+                var selectedObject = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+                if (selectedObject == null)
+                    return false;
+
+                for (var t = selectedObject.transform; t != null; t = t.parent)
+                    if (t.gameObject == gameObject)
+                        return true;
+
+                return false;
+            }
+        }
+
         private static readonly List<PackModel> _packs = new List<PackModel>(16);
         private static readonly Dictionary<string, UiShaderState> _shaderUiState = new Dictionary<string, UiShaderState>(StringComparer.Ordinal);
         private static readonly Dictionary<string, HashSet<string>> _collapsedGroupsByPack = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -2203,10 +2240,16 @@ namespace GeneratedUI
                         continue;
                     }
 
+                    var pendingText = field.Value;
                     groupModel.AddField(
                         field.Label,
                         field.Value,
-                        value => ApplyFieldValue(fieldShaderName, path, value ?? string.Empty, applySelectedPack: true, rebuildUi: false),
+                        // Only tracked here, not applied: committing partial in-progress text like
+                        // "0." or "-" would fail to parse, fall back to the last valid value, and
+                        // rewrite the input's text back to that fallback mid-edit — silently eating
+                        // the character just typed. The actual commit happens in FieldCommitTracker
+                        // below (Enter or losing focus), plus onEndEdit as a redundant-safe backup.
+                        value => pendingText = value ?? string.Empty,
                         input =>
                         {
                             if (input == null || string.IsNullOrWhiteSpace(fieldShaderName) || string.IsNullOrWhiteSpace(path))
@@ -2215,6 +2258,15 @@ namespace GeneratedUI
                             var stateForInput = GetOrCreateShaderUiState(fieldShaderName);
                             PruneDeadInputs(stateForInput);
                             stateForInput.Inputs[$"{fieldShaderName}:{path}"] = input;
+
+                            // SFS.UI.ModGUI's TextInput only exposes a single onChange (fires per
+                            // keystroke); it has no true submit/blur event of its own. This tracker
+                            // — the same technique used by BP-Editor's NumSubmitTracker for exactly
+                            // this UI framework — polls Enter and focus loss directly instead, which
+                            // is what actually and reliably commits a value.
+                            var tracker = input.gameObject.AddComponent<FieldCommitTracker>();
+                            tracker.GetPending = () => pendingText;
+                            tracker.OnCommit = () => ApplyFieldValue(fieldShaderName, path, pendingText, applySelectedPack: true, rebuildUi: false);
 
                             var inputField = input.gameObject != null
                                 ? input.gameObject.GetComponent<InputField>() ?? input.gameObject.GetComponentInChildren<InputField>(true)
