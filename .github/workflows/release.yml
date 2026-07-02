@@ -1,0 +1,108 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sfs-shaders
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build mod (Release)
+        run: dotnet build sfs-shaders.csproj -c Release
+
+      - name: Read mod version
+        id: modversion
+        run: |
+          version=$(grep -oP '(?<=ModVersion => ")[^"]+' Main.cs)
+          echo "Mod version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Locate built DLL
+        id: dll
+        run: |
+          dll=$(find bin/Release -name "sfs-shaders.dll" | head -n1)
+          if [ -z "$dll" ]; then echo "sfs-shaders.dll not found in bin/Release" >&2; exit 1; fi
+          echo "path=$dll" >> "$GITHUB_OUTPUT"
+
+      - name: Package mod release
+        run: |
+          set -e
+          mkdir -p dist/mod/sfs-shaders
+          cp "${{ steps.dll.outputs.path }}" dist/mod/sfs-shaders/
+          cp README* dist/mod/sfs-shaders/ 2>/dev/null || true
+          (cd dist/mod && zip -r "../../sfs-shaders-${{ steps.modversion.outputs.version }}.zip" sfs-shaders)
+
+      - name: Clone SFS-Pack-Builder
+        run: git clone --depth 1 https://github.com/uneven-coder/SFS-Pack-Builder.git sdk-src
+
+      - name: Build sfspack wheel
+        run: |
+          set -e
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist/sfspack-wheel sdk-src
+
+      - name: Assemble SDK
+        run: |
+          set -e
+          sdk=dist/sdk
+          mkdir -p "$sdk/dependencies" "$sdk/sfspack/dist" "$sdk/sfspack/source" "$sdk/example-pack"
+
+          # Dependency DLLs shader code compiles against, plus the mod itself.
+          cp dependacies/*.dll "$sdk/dependencies/"
+          cp "${{ steps.dll.outputs.path }}" "$sdk/dependencies/"
+
+          # Pack-builder tool: built wheel + full source (minus VCS metadata).
+          cp dist/sfspack-wheel/*.whl "$sdk/sfspack/dist/"
+          rm -rf sdk-src/.git
+          cp -r sdk-src/. "$sdk/sfspack/source/"
+
+          # Example/pre-init shader pack shipped with the mod, as a starting template.
+          cp -r Shaders/. "$sdk/example-pack/"
+
+          cp .github/sdk-templates/README.md "$sdk/README.md"
+          cp .github/sdk-templates/GUIDE.md "$sdk/GUIDE.md"
+
+          (cd dist && zip -r "../sfs-shaders-sdk-${{ steps.modversion.outputs.version }}.zip" sdk)
+
+      - name: Build changelog
+        id: changelog
+        run: |
+          {
+            echo "changelog<<GH_EOF"
+            git log -1 --pretty=format:"%s%n%n%b"
+            echo ""
+            echo "GH_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.modversion.outputs.version }}-${{ github.run_number }}
+          name: SFS Shaders v${{ steps.modversion.outputs.version }} (build ${{ github.run_number }})
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+
+            ---
+            Commit: ${{ github.sha }}
+          files: |
+            sfs-shaders-${{ steps.modversion.outputs.version }}.zip
+            sfs-shaders-sdk-${{ steps.modversion.outputs.version }}.zip

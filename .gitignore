@@ -413,7 +413,6 @@ FodyWeavers.xsd
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/csharp,visualstudiocode
-/.github
 
 /dependacies
 .hidden-items.json
@@ -425,3 +424,4 @@ ui-maker-diff-report.md
 /Shaders/README.md
 /.env
 /Shaders/.env
+.github/copilot-instructions.md

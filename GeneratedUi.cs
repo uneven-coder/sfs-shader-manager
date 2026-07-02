@@ -1570,18 +1570,8 @@ namespace GeneratedUI
             if (_menuRoot == null)
                 return;
 
-            // The popped-out browser lives under the scene UI root, not the settings-tab parent,
-            // so "collapse to hint" (which only makes sense inside the settings tab) would build a
-            // stray hint window in the wrong place. Popout close should mirror the "Back To
-            // Settings" button instead: drop out of popout mode and fully close.
             if (_configPopoutMode)
-            {
-                _configPopoutMode = false;
-                _shaderBrowserExpanded = false;
-                SavePersistentUiState();
-                CloseShaderBrowser();
                 return;
-            }
 
             // Escape should leave the browser in the same "collapsed hint" state that clicking
             // the category button to collapse does, not tear the whole page down to nothing.
