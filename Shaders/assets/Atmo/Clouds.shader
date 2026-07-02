@@ -78,6 +78,15 @@ Shader "Hidden/shaders/CloudsShader"
 
             float Hash(float n) { return frac(sin(n) * 43758.5453123); }
 
+            float InterleavedGradientNoise(float2 pixelCoord)
+            {   // Low-noise per-pixel dither for raymarch step offsets: a stable screen-space
+                // pattern instead of a raw hash breaks up banding without the speckled "static"
+                // look of white noise, and (unlike hashing a time-varying world position) it does
+                // not shift every frame, so it no longer flickers when nothing on screen is moving.
+                const float3 magic = float3(0.06711056, 0.00583715, 52.9829189);
+                return frac(magic.z * frac(dot(pixelCoord, magic.xy)));
+            }
+
             float3 Hash3(float3 p)
             {
                 p = float3(dot(p, float3(127.1, 311.7, 74.7)), dot(p, float3(269.5, 183.3, 246.1)), dot(p, float3(113.5, 271.9, 124.6)));
@@ -220,7 +229,7 @@ Shader "Hidden/shaders/CloudsShader"
             struct CloudResult { float3 color; float alpha; float bloom; };
 
             CloudResult RaymarchClouds(float3 rayOrigin, float3 rayDir, float3 planetCenter, float3 sunDir,
-                                        float innerRadius, float outerRadius, float time, float sunAlignment)
+                                        float innerRadius, float outerRadius, float time, float sunAlignment, float ditherNoise)
             {   // Raymarch with proper virtual space normalization using planet data not magic numbers
                 CloudResult result; result.color = float3(0, 0, 0); result.alpha = 0.0; result.bloom = 0.0;
                 
@@ -249,7 +258,7 @@ Shader "Hidden/shaders/CloudsShader"
                 float phaseForward = HenyeyGreenstein(cosTheta, 0.6), phaseBack = HenyeyGreenstein(cosTheta, -0.3);
                 float phaseVal = lerp(phaseForward, phaseBack, 0.25);
 
-                float jitter = Hash(dot(rayOrigin + rayDir * _Time.y, float3(12.9898, 78.233, 45.543))) * stepSize;
+                float jitter = ditherNoise * stepSize;
                 float dayLight = smoothstep(-0.2, 0.3, sunAlignment);
                 float3 ambientSky = float3(0.5, 0.6, 0.8) * dayLight * 0.6;
                 float3 ambientGround = float3(0.3, 0.35, 0.4) * dayLight * 0.4;
@@ -324,7 +333,8 @@ Shader "Hidden/shaders/CloudsShader"
                 float3 normalFromCenter = normalize(toFragment);
                 float sunAlignment = dot(normalFromCenter, sunDir);
                 
-                CloudResult cloudResult = RaymarchClouds(i.worldPos, rayDir, planetCenter, sunDir, cloudStart, cloudEnd, _Time.y, sunAlignment);
+                float ditherNoise = InterleavedGradientNoise(i.vertex.xy);
+                CloudResult cloudResult = RaymarchClouds(i.worldPos, rayDir, planetCenter, sunDir, cloudStart, cloudEnd, _Time.y, sunAlignment, ditherNoise);
 
                 if (cloudResult.alpha < 0.005) discard;
 

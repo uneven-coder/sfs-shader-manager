@@ -340,7 +340,7 @@ namespace shaders.Effects.AtmosphereShaderPack
             SyncAtmoSharedToCloud(ref a);
 
             // Extract planet atmosphere data
-            a = ApplyPlanetAtmosphereData(a, playerPlanet);
+            a = ApplyPlanetAtmosphereData(a, playerPlanet, userOverrides);
 
             // Update sun direction and color
             var sunPlanet = UnityEngine.Object.FindObjectsOfType<Planet>()
@@ -504,8 +504,8 @@ namespace shaders.Effects.AtmosphereShaderPack
         private Planet? ResolvePlayerPlanet() => SfsWorldUtils.ResolvePlayerPlanet(allowCameraFallback: true);
         private static Planet? TryResolveViewPlanet() => SfsWorldUtils.TryResolveViewPlanet();
 
-        private Args ApplyPlanetAtmosphereData(Args args, Planet? playerPlanet)
-        {   // Pull atmosphere and cloud defaults from current player planet visuals
+        private Args ApplyPlanetAtmosphereData(Args args, Planet? playerPlanet, System.Collections.Generic.Dictionary<string, object>? userOverrides)
+        {   // Pull atmosphere and cloud defaults from current player planet visuals/physics
             if (playerPlanet?.HasAtmosphereVisuals != true)
                 return args;
 
@@ -526,9 +526,31 @@ namespace shaders.Effects.AtmosphereShaderPack
                 if (gradient == null)
                     return args;
 
-                args.AtmosphereHeight = (float)gradient.height;
+                // Prefer the planet's real physics atmosphere extent (the same height the game
+                // uses for drag/heating/parachutes) over the purely cosmetic gradient-texture
+                // scale, so the rendered shell actually matches how thick this planet's atmosphere
+                // really is instead of an Earth-tuned visual constant — this is what lets the
+                // shader render correctly on any planet, not just the one it was authored against.
+                args.AtmosphereHeight = playerPlanet.HasAtmospherePhysics
+                    ? (float)playerPlanet.AtmosphereHeightPhysics
+                    : (float)gradient.height;
+
                 args.PlanetRadius = (float)playerPlanet.Radius;
                 args.CloudLayer.PlanetRadius = args.PlanetRadius;
+
+                // Match this planet's real atmospheric density falloff shape (the same formula
+                // Planet.GetAtmosphericDensity uses for gameplay drag/heating) instead of one
+                // artist-tuned curve fixed for a single planet — but only when the user hasn't
+                // explicitly dialed in their own values for these fields.
+                var physics = playerPlanet.HasAtmospherePhysics ? playerPlanet.data?.atmospherePhysics : null;
+                if (physics != null)
+                {
+                    if (!WasEdited(userOverrides, "AtmosphereDensity") && physics.density >= 0.0)
+                        args.AtmosphereDensity = (float)physics.density;
+
+                    if (!WasEdited(userOverrides, "DensityCurve") && physics.curve >= 0.0)
+                        args.DensityCurve = (float)physics.curve;
+                }
 
                 var cloudOverrides = GeneratedLayout.GetUserArgs("CloudsShader");
                 var hasWorldStartOverride = cloudOverrides?.ContainsKey("World.CloudStartHeight") == true;

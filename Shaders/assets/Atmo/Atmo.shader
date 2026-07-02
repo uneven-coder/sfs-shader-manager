@@ -84,9 +84,15 @@ Shader "Hidden/shaders/AtmoShader"
             }
 
             float GetAtmosphereDensity(float normalizedHeight)
-            {   // Exponential density falloff with configurable curve
-                float expDensity = exp(-normalizedHeight * _DensityCurve);
-                return _AtmosphereDensity * saturate(expDensity);
+            {   // Matches SFS's own Planet.GetAtmosphericDensity(height) shape: subtracting the
+                // value at the top of atmosphere means density reaches exactly zero at the shell
+                // boundary instead of an arbitrary hard clamp (which caused a visible seam), and
+                // _DensityCurve/_AtmosphereDensity are populated per-planet from real atmosphere
+                // physics data so the falloff shape matches that planet, not just the one it was tuned on.
+                float curve = max(_DensityCurve, 0.0001);
+                float topOfAtmosphere = exp(-curve);
+                float raw = exp(-normalizedHeight * curve) - topOfAtmosphere;
+                return _AtmosphereDensity * saturate(raw / max(1.0 - topOfAtmosphere, 0.0001));
             }
 
             float3 GetRayleighCoefficients()
