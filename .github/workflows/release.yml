@@ -26,6 +26,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Restore dependacies (gitignored game/Unity DLLs)
+        run: |
+          set -e
+          git clone --depth 1 https://github.com/uneven-coder/Setup-Script.git deps-src
+          mkdir -p dependacies
+          cp deps-src/dependacies/*.dll dependacies/
+          rm -rf deps-src
+
       - name: Build mod (Release)
         run: dotnet build sfs-shaders.csproj -c Release
 
