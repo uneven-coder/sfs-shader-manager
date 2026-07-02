@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using UnityEngine;
@@ -7,6 +8,7 @@ using shaders;
 using UnityEngine.UI;
 using shaders.Lib.ShaderModules.ShaderPack;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine.SceneManagement;
 using HarmonyLib;
 using SFS.Cameras;
@@ -111,6 +113,121 @@ namespace shaders
             DefaultValue = defaultValue;
             AutoApply = autoApply;
             ExposeInUi = exposeInUi;
+        }
+    }
+
+    /// Generic reflection-based default-value filler for ShaderModule Args structs. Any code path
+    /// that constructs a fresh Args via Activator.CreateInstance (a fully zeroed struct) should run
+    /// it through here before use, so fields actually start at their [ShaderArg] DefaultValue rather
+    /// than 0/false/null. This is the single implementation shared by the config UI (GeneratedUi.cs)
+    /// and the runtime activation paths in ShaderPackManager/OverlayDispatcher — previously each had
+    /// its own copy (or none), so defaults only applied in whichever path happened to run first.
+    public static class ShaderArgDefaults
+    {
+        public static object? Apply(object? target)
+        {
+            if (target == null)
+                return null;
+
+            var type = target.GetType();
+
+            // A struct's own [ShaderArg] DefaultValue is a single baseline shared by every field of
+            // that struct type, so it can't express tabs that are the same struct type but want
+            // different tuned defaults (e.g. CameraProfile reused for both "World" and "Scaled" in
+            // AtmoShader.cs). When such a struct is still fully unset, prefer seeding it from its own
+            // public static CreateDefaultArgs(), which can carry per-tab-distinct values, instead of
+            // letting the per-field loop below stamp one shared baseline onto every tab.
+            if (IsUnsetValue(target, type))
+            {
+                // CreateDefaultArgs() is a static factory on the *enclosing* module class (e.g.
+                // CloudsShaderModule.CreateDefaultArgs() returning CloudsShaderModule.Args), not on
+                // the nested Args struct itself — so it must be looked up via DeclaringType.
+                var createDefaultArgs = type.GetMethod("CreateDefaultArgs", BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null)
+                    ?? type.DeclaringType?.GetMethod("CreateDefaultArgs", BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
+                var seeded = createDefaultArgs?.Invoke(null, null);
+                if (seeded != null)
+                {
+                    // CreateDefaultArgs() already fully populates every field, including
+                    // deliberately zero-valued ones (e.g. Scaled.CloudType = 0). Return it as-is
+                    // instead of falling through to the generic per-field loop below, which can't
+                    // tell "deliberately zero" apart from "never set" and would stamp the shared
+                    // [ShaderArg] baseline back over real, intentional zero values.
+                    return seeded;
+                }
+            }
+
+            var fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Where(field => !field.IsStatic)
+                .ToArray();
+
+            foreach (var field in fields)
+            {
+                var current = field.GetValue(target);
+                var attr = field.GetCustomAttribute<ShaderArgAttribute>();
+                var fieldType = Nullable.GetUnderlyingType(field.FieldType) ?? field.FieldType;
+
+                if (attr != null && attr.DefaultValue != null && IsUnsetValue(current, fieldType))
+                {
+                    var converted = Convert(attr.DefaultValue, fieldType);
+                    if (converted != null)
+                        current = converted;
+                }
+
+                if (current != null && !fieldType.IsArray && !IsLeafType(fieldType))
+                    current = Apply(current);
+
+                field.SetValue(target, current);
+            }
+
+            return target;
+        }
+
+        public static bool IsUnsetValue(object? value, Type valueType)
+        {
+            if (value == null)
+                return true;
+
+            if (valueType == typeof(string))
+                return string.IsNullOrEmpty(value as string);
+
+            if (!valueType.IsValueType)
+                return false;
+
+            var defaultValue = Activator.CreateInstance(valueType);
+            return value.Equals(defaultValue);
+        }
+
+        private static object? Convert(object defaultValue, Type targetType)
+        {
+            var sourceType = defaultValue.GetType();
+            if (targetType.IsAssignableFrom(sourceType))
+                return defaultValue;
+
+            try
+            {
+                if (targetType.IsEnum)
+                    return defaultValue is string enumName ? Enum.Parse(targetType, enumName, true) : Enum.ToObject(targetType, defaultValue);
+
+                return System.Convert.ChangeType(defaultValue, targetType, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool IsLeafType(Type type)
+        {
+            var target = Nullable.GetUnderlyingType(type) ?? type;
+            return target.IsPrimitive
+                || target.IsEnum
+                || target == typeof(string)
+                || target == typeof(decimal)
+                || target == typeof(Vector2)
+                || target == typeof(Vector3)
+                || target == typeof(Vector4)
+                || target == typeof(Color)
+                || target == typeof(Texture2D);
         }
     }
 
@@ -870,15 +987,28 @@ namespace shaders
             lock (_lock)
             {
                 if (_initialized && !force) return;
+
+                // force=true fires on every mod assembly load (see CodeAssemblyLoadHooks), which
+                // happens repeatedly and asynchronously as unrelated mods finish loading — not just
+                // once at startup. A refresh only needs to pick up newly-discoverable types (e.g. a
+                // shader pack whose CodeAssembly just finished loading); it must NOT recreate types
+                // that are already registered, since the active pack's own module references
+                // (ShaderPackBase._modulesByType, captured at Activate() time) would then point at
+                // orphaned instances while GetShaders()/ResolveModule() started resolving fresh ones
+                // — desyncing camera binding from deactivate/restore and making shaders intermittently
+                // stop applying or fail to restore across scene loads.
+                var isRefresh = _initialized && force;
                 _initialized = true;
 
-                Debug.Log("[ShaderRegistry] Initializing shader module registry.");
+                Debug.Log(isRefresh ? "[ShaderRegistry] Refreshing shader module registry." : "[ShaderRegistry] Initializing shader module registry.");
 
-                _byName.Clear();
+                if (!isRefresh)
+                    _byName.Clear();
 
                 foreach (var t in DiscoverModuleTypes(typeof(IShaderModule)))
                 {
                     if (t.GetConstructor(Type.EmptyTypes) == null) continue;
+                    if (isRefresh && _byName.Values.Any(m => m.GetType() == t)) continue;
 
                     try
                     {
@@ -1005,22 +1135,12 @@ namespace shaders.Lib
     public static class ShaderPackManager
     {
         private sealed class PersistedPackState
-        {   // Serialized state for selected pack and per-shader overrides
+        {   // Serialized state for selected pack and per-shader overrides.
+            // Shaders maps ShaderName -> (FieldPath -> raw JSON value); field types aren't stored
+            // since they're resolved from the shader's live Args type on load (via ResolveFieldType),
+            // keeping the on-disk file a flat, human-editable key/value layout per shader.
             public string? SelectedPackName;
-            public List<PersistedShaderState> Shaders = new List<PersistedShaderState>();
-
-            public sealed class PersistedShaderState
-            {   // Serialized state container for one shader's field overrides
-                public string? ShaderName;
-                public List<PersistedOverrideEntry> Overrides = new List<PersistedOverrideEntry>();
-            }
-
-            public sealed class PersistedOverrideEntry
-            {   // Serialized representation of one override value with type metadata
-                public string? FieldPath;
-                public string? TypeName;
-                public string? JsonValue;
-            }
+            public Dictionary<string, Dictionary<string, JToken>> Shaders = new Dictionary<string, Dictionary<string, JToken>>(StringComparer.Ordinal);
         }
 
         private sealed class RuntimeShaderState
@@ -1071,9 +1191,11 @@ namespace shaders.Lib
         {   // Initialize shader system: registry then packs
             if (_initialized) return;
 
-            LoadPersistedState();
+            // Registries must exist before LoadPersistedState, which resolves each override's
+            // .NET field type from the shader's live Args type (see ResolveFieldType).
             ShaderRegistry.Initialize();
             ShaderPackRegistry.Initialize();
+            LoadPersistedState();
 
             if (!_cameraHookRegistered)
             {
@@ -1142,7 +1264,8 @@ namespace shaders.Lib
                 {   // Create default args so the shader renders correctly with proper uniform defaults.
                     var argsType = ResolveArgsType(shader);
                     if (argsType != null)
-                        try { resolvedArgs = Activator.CreateInstance(argsType); } catch { }
+                        try { resolvedArgs = ShaderArgDefaults.Apply(Activator.CreateInstance(argsType)); }
+                        catch (Exception ex) { Debug.LogWarning($"[ShaderPackManager] Failed to build default args for '{shader.Name}': {ex}"); }
                 }
 
                 if (resolvedArgs != null)
@@ -1381,66 +1504,78 @@ namespace shaders.Lib
             _shaderStateByName.Clear();
             if (state.Shaders == null) return;
 
-            foreach (var shader in state.Shaders)
+            foreach (var shaderEntry in state.Shaders)
             {
-                if (shader == null || string.IsNullOrWhiteSpace(shader.ShaderName))
+                var shaderName = shaderEntry.Key;
+                if (string.IsNullOrWhiteSpace(shaderName) || shaderEntry.Value == null)
                     continue;
 
-                var runtime = GetOrCreateShaderState(shader.ShaderName);
+                var runtime = GetOrCreateShaderState(shaderName);
                 runtime.UserOverrides.Clear();
 
-                if (shader.Overrides == null) continue;
+                var argsType = ResolveArgsType(ShaderRegistry.Get(shaderName));
 
-                foreach (var entry in shader.Overrides)
+                foreach (var field in shaderEntry.Value)
                 {
-                    if (entry == null || string.IsNullOrWhiteSpace(entry.FieldPath))
+                    if (string.IsNullOrWhiteSpace(field.Key) || field.Value == null)
                         continue;
 
-                    object value;
                     try
                     {
-                        var type = !string.IsNullOrWhiteSpace(entry.TypeName) ? Type.GetType(entry.TypeName) : null;
-                        value = type != null
-                            ? JsonConvert.DeserializeObject(entry.JsonValue, type)
-                            : JsonConvert.DeserializeObject(entry.JsonValue);
+                        var fieldType = argsType != null ? ResolveFieldType(argsType, field.Key) : null;
+                        var value = fieldType != null ? field.Value.ToObject(fieldType) : field.Value.ToObject<object>();
+                        if (value != null)
+                            runtime.UserOverrides[field.Key] = value;
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogWarning($"[ShaderPackManager] Failed to deserialize override '{entry.FieldPath}' (type '{entry.TypeName ?? "unknown"}'): {ex.Message}");
-                        continue;
+                        Debug.LogWarning($"[ShaderPackManager] Failed to deserialize override '{field.Key}' for shader '{shaderName}': {ex.Message}");
                     }
-
-                    if (value != null)
-                        runtime.UserOverrides[entry.FieldPath] = value;
                 }
             }
         }
 
+        /// Walks a dotted FieldPath (e.g. "World.CloudAlpha") through an Args struct's nested
+        /// fields to find the .NET type an override value must be converted to.
+        private static Type ResolveFieldType(Type rootType, string fieldPath)
+        {
+            var current = rootType;
+            foreach (var part in fieldPath.Split('.'))
+            {
+                if (current == null) return null;
+
+                var name = part;
+                var bracketIdx = name.IndexOf('[');
+                if (bracketIdx >= 0) name = name.Substring(0, bracketIdx);
+
+                var field = current.GetField(name);
+                if (field == null) return null;
+
+                current = field.FieldType;
+            }
+
+            return current;
+        }
+
         private static void SavePersistedState()
-        {   // Persist selected pack and user overrides to disk
+        {   // Persist selected pack and user overrides to disk as ShaderName -> (FieldPath -> value)
             try
             {
-                var state = new PersistedPackState
+                var shaders = new Dictionary<string, Dictionary<string, JToken>>(StringComparer.Ordinal);
+                foreach (var kvp in _shaderStateByName)
                 {
-                    SelectedPackName = _selectedPackName,
-                    Shaders = _shaderStateByName
-                        .Where(kvp => kvp.Value != null && kvp.Value.UserOverrides.Count > 0)
-                        .Select(kvp => new PersistedPackState.PersistedShaderState
-                        {
-                            ShaderName = kvp.Key,
-                            Overrides = kvp.Value.UserOverrides
-                                .Where(ov => !string.IsNullOrWhiteSpace(ov.Key) && ov.Value != null)
-                                .Select(ov => new PersistedPackState.PersistedOverrideEntry
-                                {
-                                    FieldPath = ov.Key,
-                                    TypeName = ov.Value.GetType().AssemblyQualifiedName,
-                                    JsonValue = JsonConvert.SerializeObject(ov.Value)
-                                })
-                                .ToList()
-                        })
-                        .Where(s => s.Overrides.Count > 0)
-                        .ToList()
-                };
+                    if (kvp.Value == null) continue;
+
+                    var overrides = new Dictionary<string, JToken>(StringComparer.Ordinal);
+                    foreach (var ov in kvp.Value.UserOverrides)
+                        if (!string.IsNullOrWhiteSpace(ov.Key) && ov.Value != null)
+                            overrides[ov.Key] = JToken.FromObject(ov.Value);
+
+                    if (overrides.Count > 0)
+                        shaders[kvp.Key] = overrides;
+                }
+
+                var state = new PersistedPackState { SelectedPackName = _selectedPackName, Shaders = shaders };
 
                 var json = JsonConvert.SerializeObject(state, Formatting.Indented);
                 SettingsFile.WriteText(json);
@@ -1484,8 +1619,8 @@ namespace shaders.Lib
                     var argsType = ResolveArgsType(module);
                     if (argsType != null)
                     {
-                        try { args = Activator.CreateInstance(argsType); }
-                        catch { }
+                        try { args = ShaderArgDefaults.Apply(Activator.CreateInstance(argsType)); }
+                        catch (Exception ex) { Debug.LogWarning($"[ShaderPackManager] Failed to build default args for '{module.Name}': {ex}"); }
                     }
                 }
 
@@ -2603,9 +2738,14 @@ namespace shaders.Lib.ShaderModules.ShaderPack
         public static IReadOnlyCollection<IShaderPack> AllPacks => _packs.Values.ToArray();
 
         public static void Initialize()
-        {   // Discover and register all shader packs in loaded assemblies
-            _packs.Clear();
-
+        {   // Discover and register all shader packs in loaded assemblies.
+            // Called repeatedly (once per mod assembly load, see CodeAssemblyLoadHooks) — not just
+            // once at startup — so this must only ADD newly-discoverable pack types rather than
+            // clearing and recreating everything each time. Recreating an already-registered pack
+            // would replace it out from under _activePack (which keeps its own object reference and
+            // is never reset here), leaving the active pack's _modulesByType instances orphaned from
+            // the fresh ones GetShaders()/ResolveModule() would then resolve, and causing shaders to
+            // intermittently stop applying or fail to restore across scene loads.
             var packTypes = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(GetTypesFromAssembly)
                 .Where(t => t != null && !t.IsAbstract && typeof(IShaderPack).IsAssignableFrom(t)
@@ -2613,6 +2753,8 @@ namespace shaders.Lib.ShaderModules.ShaderPack
 
             foreach (var type in packTypes)
             {
+                if (_packs.Values.Any(p => p.GetType() == type)) continue;
+
                 try
                 {
                     var pack = (IShaderPack)Activator.CreateInstance(type);

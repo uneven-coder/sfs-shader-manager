@@ -15,7 +15,7 @@ namespace shaders
         public override string ModNameID => "shaders";
         public override string DisplayName => "SFS Shaders";
         public override string Author => "Cratior";
-        public override string ModVersion => "2.8.0";
+        public override string ModVersion => "2.9.0";
         public override string Description => "Shader manager/runtime.";
         public override string MinimumGameVersionNecessary => "1.5.6";
 

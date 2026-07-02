@@ -2333,7 +2333,7 @@ namespace GeneratedUI
 
                 Try<object>.Run(() =>
                 {
-                    var created = Activator.CreateInstance(argsType);
+                    var created = global::shaders.ShaderArgDefaults.Apply(Activator.CreateInstance(argsType));
                     if (created != null)
                         ShaderPackManager.SetCurrentArgs(shader.Name, created);
 
@@ -2686,79 +2686,11 @@ namespace GeneratedUI
             return ApplyShaderArgDefaults(baseline);
         }
 
-        private static object? ApplyShaderArgDefaults(object target)
-        {
-            if (target == null)
-                return null;
-
-            var type = target.GetType();
-            var fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                .Where(field => !field.IsStatic)
-                .ToArray();
-
-            for (var i = 0; i < fields.Length; i++)
-            {
-                var field = fields[i];
-                var current = field.GetValue(target);
-                var attr = field.GetCustomAttribute<ShaderArgAttribute>();
-                var fieldType = Nullable.GetUnderlyingType(field.FieldType) ?? field.FieldType;
-
-                if (attr != null && attr.DefaultValue != null && IsUnsetValue(current, fieldType))
-                {
-                    var converted = ConvertShaderDefaultValue(attr.DefaultValue, fieldType);
-                    if (converted != null)
-                        current = converted;
-                }
-
-                if (current != null && !fieldType.IsArray && !IsLeafType(fieldType))
-                    current = ApplyShaderArgDefaults(current);
-
-                field.SetValue(target, current);
-            }
-
-            return target;
-        }
-
-        private static bool IsUnsetValue(object value, System.Type valueType)
-        {
-            if (value == null)
-                return true;
-
-            if (valueType == typeof(string))
-                return string.IsNullOrEmpty(value as string);
-
-            if (!valueType.IsValueType)
-                return false;
-
-            var defaultValue = Activator.CreateInstance(valueType);
-            return value.Equals(defaultValue);
-        }
-
-        private static object? ConvertShaderDefaultValue(object defaultValue, System.Type targetType)
-        {
-            if (defaultValue == null)
-                return null;
-
-            var sourceType = defaultValue.GetType();
-            if (targetType.IsAssignableFrom(sourceType))
-                return defaultValue;
-
-            try
-            {
-                if (targetType.IsEnum)
-                {
-                    if (defaultValue is string enumName)
-                        return Enum.Parse(targetType, enumName, true);
-                    return Enum.ToObject(targetType, defaultValue);
-                }
-
-                return Convert.ChangeType(defaultValue, targetType, CultureInfo.InvariantCulture);
-            }
-            catch
-            {
-                return null;
-            }
-        }
+        // Delegates to the shared implementation in shaders.ShaderArgDefaults (lib/Shaders.cs) so
+        // every place that builds a fresh Args via Activator.CreateInstance — this UI, the pack
+        // activation paths in ShaderPackManager, and OverlayDispatcher's render fallback — fills in
+        // [ShaderArg] defaults (and CreateDefaultArgs()-seeded per-tab baselines) the same way.
+        private static object? ApplyShaderArgDefaults(object target) => shaders.ShaderArgDefaults.Apply(target);
 
         private static object? CloneArgs(object source)
         {

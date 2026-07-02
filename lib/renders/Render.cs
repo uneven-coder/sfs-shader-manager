@@ -669,7 +669,7 @@ namespace shaders
             var argsType = ResolveArgsType(moduleType);
             if (argsType != null)
             {
-                var args = OverlayDispatcher.CurrentArgs ?? Activator.CreateInstance(argsType);
+                var args = OverlayDispatcher.CurrentArgs ?? shaders.ShaderArgDefaults.Apply(Activator.CreateInstance(argsType));
                 OverlayDispatcher.CurrentArgs = args;
 
                 var runMethod = ResolveRunMethod(moduleType);

@@ -43,7 +43,7 @@ namespace shaders.Effects.AtmosphereShaderPack
             [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_AtmosphereDensity", defaultValue: 1.0f)] public float AtmosphereDensity;
             [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_DensityCurve", defaultValue: 1.0f)] public float DensityCurve;
             [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_ScatterStrength", defaultValue: 2.4f)] public float ScatterStrength;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RayleighStrength", defaultValue: 2.6f)] public float RayleighStrength;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RayleighStrength", defaultValue: 2.8f)] public float RayleighStrength;
             [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieStrength", defaultValue: 11.0f)] public float MieStrength;
             [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieG", defaultValue: 1.0f)] public float MieAnisotropy;
             [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RefractiveIndex", defaultValue: 1.5f)] public float RefractiveIndex;
@@ -538,19 +538,13 @@ namespace shaders.Effects.AtmosphereShaderPack
                 args.PlanetRadius = (float)playerPlanet.Radius;
                 args.CloudLayer.PlanetRadius = args.PlanetRadius;
 
-                // Match this planet's real atmospheric density falloff shape (the same formula
-                // Planet.GetAtmosphericDensity uses for gameplay drag/heating) instead of one
-                // artist-tuned curve fixed for a single planet — but only when the user hasn't
-                // explicitly dialed in their own values for these fields.
-                var physics = playerPlanet.HasAtmospherePhysics ? playerPlanet.data?.atmospherePhysics : null;
-                if (physics != null)
-                {
-                    if (!WasEdited(userOverrides, "AtmosphereDensity") && physics.density >= 0.0)
-                        args.AtmosphereDensity = (float)physics.density;
-
-                    if (!WasEdited(userOverrides, "DensityCurve") && physics.curve >= 0.0)
-                        args.DensityCurve = (float)physics.curve;
-                }
+                // AtmosphereDensity/DensityCurve intentionally do NOT pull from the planet's real
+                // atmospherePhysics data (e.g. a realistic ~0.005 density) here. The tuned config
+                // values hardcoded as this Args struct's [ShaderArg] defaults (1.0/1.0) are the fixed
+                // look this shader pack is authored for, matching what used to be a hard user
+                // override forcing these two fields regardless of per-planet physics — pulling the
+                // real planet value back in would silently undo that override with nothing left to
+                // re-override it now that defaults, not per-session overrides, carry the config.
 
                 var cloudOverrides = GeneratedLayout.GetUserArgs("CloudsShader");
                 var hasWorldStartOverride = cloudOverrides?.ContainsKey("World.CloudStartHeight") == true;
@@ -665,30 +659,30 @@ namespace shaders.Effects.AtmosphereShaderPack
         {   // World-camera defaults tuned for close-range atmosphere visuals
             return new CameraProfile
             {
-                CloudStartHeight = 0.0f,
-                CloudMaxHeight = 12200f,
-                CloudScale = 0.000175f,
-                CloudThreshold = 0.453f,
-                CloudDensity = 0.6f,
-                CloudAlpha = 0.5f,
-                CloudCoverage = 0.01478f,
-                CloudType = 1.0f,
-                CloudSoftness = 1.0f,
-                CloudScrollSpeed = 111f,
+                CloudStartHeight = 3700f,
+                CloudMaxHeight = 12500f,
+                CloudScale = 6e-05f,
+                CloudThreshold = 0.5f,
+                CloudDensity = 122.0f,
+                CloudAlpha = 0.2f,
+                CloudCoverage = 0.23f,
+                CloudType = 1.2f,
+                CloudSoftness = 5.0f,
+                CloudScrollSpeed = 800f,
                 CloudMovementDirection = new Vector3(1f, 0f, 0f),
                 CloudRotationAxis = new Vector3(5f, 0f, 1f),
                 CloudRotationSpeed = 0.0049f,
                 CloudDetailIntensity = 0.0f,
-                CloudThresholdVariation = 0.6393f,
+                CloudThresholdVariation = 0.003f,
                 CloudThresholdNoiseScale = 2.3e-05f,
-                CloudRaymarchSteps = 22,
-                CloudLightSteps = 5,
+                CloudRaymarchSteps = 10,
+                CloudLightSteps = 2,
                 CloudDepthFade = 67111f,
                 CloudDepthFadeSoftness = 0.0f,
-                CloudLightAbsorption = 6.0f,
-                CloudAmbient = 2.0f,
-                CloudMultiScatter = 1.0f,
-                CloudBloom = 0.8f
+                CloudLightAbsorption = 4.0f,
+                CloudAmbient = 1.45f,
+                CloudMultiScatter = 2.4f,
+                CloudBloom = 1.0f
             };
         }
 
@@ -696,30 +690,30 @@ namespace shaders.Effects.AtmosphereShaderPack
         {   // Scaled-camera defaults tuned for distant rendering stability and readability
             return new CameraProfile
             {
-                CloudStartHeight = -1000f,
-                CloudMaxHeight = 8000f,
-                CloudScale = 0.0001954f,
-                CloudThreshold = 0.3751f,
-                CloudDensity = 12.0f,
-                CloudAlpha = 11.0f,
-                CloudCoverage = 0.054f,
-                CloudType = 0.3f,
-                CloudSoftness = 11.0f,
-                CloudScrollSpeed = 111f,
+                CloudStartHeight = 5000f,
+                CloudMaxHeight = 15050f,
+                CloudScale = 5e-05f,
+                CloudThreshold = 0.45f,
+                CloudDensity = 22.0f,
+                CloudAlpha = 3.0f,
+                CloudCoverage = 0.0054f,
+                CloudType = 0.0f,
+                CloudSoftness = 2.0f,
+                CloudScrollSpeed = 2111f,
                 CloudMovementDirection = new Vector3(1f, 0f, 0f),
                 CloudRotationAxis = new Vector3(5f, 0f, 1f),
                 CloudRotationSpeed = 0.01f,
                 CloudDetailIntensity = 0.0f,
-                CloudThresholdVariation = 1f,
-                CloudThresholdNoiseScale = 1.7e-05f,
-                CloudRaymarchSteps = 9,
-                CloudLightSteps = 22,
-                CloudDepthFade = 3.4f,
-                CloudDepthFadeSoftness = 1.0f,
-                CloudLightAbsorption = 2.0f,
-                CloudAmbient = 3.3f,
-                CloudMultiScatter = 11.0f,
-                CloudBloom = 3.0f
+                CloudThresholdVariation = 0.02f,
+                CloudThresholdNoiseScale = 8e-05f,
+                CloudRaymarchSteps = 6,
+                CloudLightSteps = 3,
+                CloudDepthFade = 6.0f,
+                CloudDepthFadeSoftness = 0.0f,
+                CloudLightAbsorption = 1.0f,
+                CloudAmbient = 1.6f,
+                CloudMultiScatter = 2.0f,
+                CloudBloom = 1.0f
             };
         }
 
