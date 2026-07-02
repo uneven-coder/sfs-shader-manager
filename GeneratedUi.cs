@@ -6,6 +6,7 @@ using UITools;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using System.Globalization;
 using System.Reflection;
 using Newtonsoft.Json;
@@ -1413,7 +1414,10 @@ namespace GeneratedUI
                     HandleEscapeClose();
 
                 if (isExpanded)
+                {
                     TickSaveIndicator();
+                    UpdateTypingState();
+                }
 
                 if (isOpen)
                     TryProcessPendingPackApply();
@@ -1464,6 +1468,21 @@ namespace GeneratedUI
         private static float _saveIndicatorUntil;
         private static bool _pendingSearchFocusRestore;
         private static bool _committingPendingInputEdits;
+
+        /// <summary>
+        /// True while one of our own text fields (search box or a config input) has keyboard
+        /// focus. A Harmony patch on SFS.Input.KeybindingsPC's key-state methods (see
+        /// KeyboardInputBlockPatches in Shaders.cs) reads this to stop the game's own keybindings
+        /// from firing while the user is typing a value here — otherwise e.g. typing "2" into a
+        /// number field also fires whatever action is bound to that key in-game.
+        /// </summary>
+        public static bool IsTyping { get; private set; }
+
+        private static void UpdateTypingState()
+        {
+            var selected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+            IsTyping = selected != null && selected.GetComponentInParent<InputField>() != null;
+        }
         private static int _selectedPackIndex = -1;
         private static int _viewedPackIndex = -1;
         private static string _persistedSelectedPackName = string.Empty;
@@ -3704,6 +3723,7 @@ namespace GeneratedUI
             _pendingUiRebuildPersistState = false;
             _nextUiRebuildAt = 0f;
             _lastUiRebuildAt = 0f;
+            IsTyping = false;
             SavePersistentUiState();
 
             foreach (var state in _shaderUiState.Values)

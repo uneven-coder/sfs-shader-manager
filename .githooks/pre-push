@@ -1,0 +1,51 @@
+#!/bin/sh
+# Rebuilds the shader packs locally before every push and folds the built .pack files into a
+# new commit so the release workflow (which only picks up Shaders/packs/*.pack, since CI has
+# no Unity install) always ships current packs. Never blocks the push: if sfspack or Unity
+# aren't available/configured here, this just warns and lets the push through unchanged.
+
+set -e
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+if ! command -v sfspack >/dev/null 2>&1; then
+    echo "[pre-push] sfspack not on PATH; skipping shader pack rebuild." >&2
+    exit 0
+fi
+
+echo "[pre-push] Building shader packs..."
+if ! (cd Shaders && sfspack build); then
+    echo "[pre-push] sfspack build failed; pushing without rebuilt packs." >&2
+    exit 0
+fi
+
+py=python
+command -v python >/dev/null 2>&1 || py=python3
+output_folder=$("$py" -c "import json,sys; print(json.load(open('Shaders/pack.config.json'))['output_folder'])" 2>/dev/null || true)
+if [ -z "$output_folder" ]; then
+    echo "[pre-push] Could not read output_folder from Shaders/pack.config.json; skipping copy." >&2
+    exit 0
+fi
+
+mkdir -p Shaders/packs
+copied=0
+for bundle_dir in Shaders/assets/*/; do
+    label=$(basename "$bundle_dir")
+    case "$label" in .*|_*) continue ;; esac
+    src="$output_folder/$label.pack"
+    if [ -f "$src" ]; then
+        cp "$src" "Shaders/packs/$label.pack"
+        copied=1
+    fi
+done
+
+if [ "$copied" -eq 0 ]; then
+    echo "[pre-push] No built .pack files found in '$output_folder' to copy." >&2
+    exit 0
+fi
+
+if ! git diff --quiet -- Shaders/packs || [ -n "$(git status --porcelain Shaders/packs)" ]; then
+    git add Shaders/packs
+    git commit -m "chore: rebuild shader packs" --quiet
+    echo "[pre-push] Committed updated shader packs."
+fi

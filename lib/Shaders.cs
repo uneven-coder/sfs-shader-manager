@@ -13,6 +13,7 @@ using SFS.Cameras;
 using SFS.World;
 using SFS.WorldBase;
 using SFS.IO;
+using SFS.Input;
 
 public static class ShaderAssetRegistry
 {   // Runtime registry for discovered shaders and compute shaders
@@ -1909,9 +1910,53 @@ namespace shaders.Lib
 
             AssetBundleLoadHooks.Apply(harmony);
             CodeAssemblyLoadHooks.Apply(harmony);
+            KeyboardInputBlockPatches.Apply(harmony);
 
             _applied = true;
         }
+    }
+
+    /// <summary>
+    /// Blocks the game's own keybindings from firing while the user is typing in one of our config
+    /// text fields (search box or a shader parameter input) — otherwise typing e.g. "2" into a
+    /// number field also fires whatever action is bound to key "2" in-game. Same approach BP-Editor
+    /// uses (github.com/uneven-coder/BP-Editor): patch SFS.Input.KeybindingsPC.Key's I_Key.IsKeyDown
+    /// /IsKeyStay implementations directly, since that's the shared low-level check every keybind in
+    /// the game ultimately goes through, rather than trying to intercept each bound action.
+    /// </summary>
+    internal static class KeyboardInputBlockPatches
+    {
+        private static bool _installed;
+
+        public static void Apply(Harmony harmony)
+        {
+            if (_installed) return;
+            _installed = true;
+
+            try
+            {
+                var keyType = AccessTools.Inner(typeof(SFS.Input.KeybindingsPC), "Key");
+                if (keyType == null)
+                {
+                    Debug.LogWarning("[KeyboardInputBlockPatches] KeybindingsPC.Key not found; typing-block patch skipped.");
+                    return;
+                }
+
+                var prefix = new HarmonyMethod(typeof(KeyboardInputBlockPatches), nameof(BlockWhileTyping));
+                var map = keyType.GetInterfaceMap(typeof(SFS.Input.I_Key));
+                foreach (var target in map.TargetMethods)
+                {
+                    if (target.Name.Contains("IsKeyDown") || target.Name.Contains("IsKeyStay"))
+                        harmony.Patch(target, prefix);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[KeyboardInputBlockPatches] Failed to install typing-block patch: {ex.Message}");
+            }
+        }
+
+        private static bool BlockWhileTyping() => !GeneratedUI.GeneratedUiController.IsTyping;
     }
 
     /// <summary>
