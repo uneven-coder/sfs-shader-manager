@@ -1,0 +1,1 @@
+cd ./Shaders/; sfspack build; cd ../;  msbuild; do { taskkill /IM "SpaceFlight Simulator.exe" /F } | ignore; start steam://rungameid/1718870

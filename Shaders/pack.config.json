@@ -1,0 +1,22 @@
+{
+  "project_name": "Shaders",
+  "assets_folder": "assets",
+  "output_folder": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spaceflight Simulator\\Spaceflight Simulator Game\\Mods\\Custom_Assets\\Parts",
+  "asset_bundle_label": "shaders",
+  "unity_project_path": "C:\\Users\\callu\\Documents\\My Games\\DnSpy\\Spaceflight-Simulator--ModdingToolkit-main\\Modding Toolkit",
+  "unity_path": "C:\\Program Files\\Unity\\Hub\\Editor\\6000.1.17f1\\Editor\\Unity.exe",
+  "platforms": ["windows", "mac", "android", "ios"],
+  "code_assembly": {
+    "dependencies_path": "..\\dependacies",
+    "mod_assembly_path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spaceflight Simulator\\Spaceflight Simulator Game\\Mods\\sfs-shaders\\sfs-shaders.dll",
+    "target_framework": "netstandard2.1"
+  },
+  "pack": {
+    "display_name": "Shaders",
+    "author": "Cratior",
+    "version": "1.0.0",
+    "description": "Adds required shaders.",
+    "show_icon": false,
+    "icon": "icon.png"
+  }
+}
