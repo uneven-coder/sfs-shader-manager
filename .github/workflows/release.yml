@@ -57,6 +57,20 @@ jobs:
           mkdir -p dist
           cp "${{ steps.dll.outputs.path }}" "dist/sfs-shaders.dll"
 
+      - name: Collect prebuilt shader packs
+        run: |
+          set -e
+          mkdir -p dist/packs
+          # sfspack build shells out to Unity, which this CI runner doesn't have — the actual
+          # .pack files are built locally (see Shaders/README.md) and committed under
+          # Shaders/packs/ so a release can just pick them up as-is.
+          if compgen -G "Shaders/packs/*.pack" > /dev/null; then
+            cp Shaders/packs/*.pack dist/packs/
+            echo "Found $(ls dist/packs/*.pack | wc -l) prebuilt pack(s)."
+          else
+            echo "No prebuilt .pack files under Shaders/packs/ - release will ship without them."
+          fi
+
       - name: Clone SFS-Pack-Builder
         run: git clone --depth 1 https://github.com/uneven-coder/SFS-Pack-Builder.git sdk-src
 
@@ -111,4 +125,5 @@ jobs:
             Commit: ${{ github.sha }}
           files: |
             dist/sfs-shaders.dll
+            dist/packs/*.pack
             sfs-shaders-sdk-${{ steps.modversion.outputs.version }}.zip

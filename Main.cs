@@ -10,10 +10,12 @@ namespace shaders
 {
     public class Main : Mod
     {
+        public static FolderPath modFolder;
+
         public override string ModNameID => "shaders";
         public override string DisplayName => "SFS Shaders";
         public override string Author => "Cratior";
-        public override string ModVersion => "2.2.0";
+        public override string ModVersion => "2.8.0";
         public override string Description => "Shader manager/runtime.";
         public override string MinimumGameVersionNecessary => "1.5.6";
 
@@ -27,6 +29,8 @@ namespace shaders
 
         public override void Early_Load()
         {
+            modFolder = new FolderPath(ModFolder);
+
             Try.Run(() => Lib.Patches.ApplyAll())
                 .Match(
                     () => Debug.Log("[shaders] Patches applied."),

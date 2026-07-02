@@ -5,7 +5,6 @@ using System.Reflection;
 using UnityEngine;
 using shaders;
 using UnityEngine.UI;
-using System.IO;
 using shaders.Lib.ShaderModules.ShaderPack;
 using Newtonsoft.Json;
 using UnityEngine.SceneManagement;
@@ -13,6 +12,7 @@ using HarmonyLib;
 using SFS.Cameras;
 using SFS.World;
 using SFS.WorldBase;
+using SFS.IO;
 
 public static class ShaderAssetRegistry
 {   // Runtime registry for discovered shaders and compute shaders
@@ -1033,7 +1033,11 @@ namespace shaders.Lib
         private static bool _sceneHookRegistered;
         private static string? _selectedPackName;
         private static readonly Dictionary<string, RuntimeShaderState> _shaderStateByName = new Dictionary<string, RuntimeShaderState>(StringComparer.Ordinal);
-        private static readonly string _settingsFilePath = Path.Combine(Application.persistentDataPath, "shaders.shaderSettings.json");
+
+        // Stored next to the mod's own DLL (like Main.UpdatableFiles' ModFolder-relative path)
+        // rather than under Application.persistentDataPath, so the config is somewhere a user
+        // browsing their Mods folder can actually find and edit/back up.
+        private static FilePath SettingsFile => Main.modFolder.ExtendToFile("shaders.Config.txt");
 
         /// <summary>
         /// Raised whenever the pack list or active pack changes, including asynchronously (e.g. a
@@ -1355,54 +1359,59 @@ namespace shaders.Lib
         {   // Load user settings from disk and restore selected pack + override values
             try
             {
-                if (!File.Exists(_settingsFilePath)) return;
+                var settingsFile = SettingsFile;
+                if (!settingsFile.FileExists()) return;
 
-                var json = File.ReadAllText(_settingsFilePath);
-                var state = JsonConvert.DeserializeObject<PersistedPackState>(json);
-                if (state == null) return;
-
-                _selectedPackName = string.IsNullOrWhiteSpace(state.SelectedPackName) ? null : state.SelectedPackName;
-
-                _shaderStateByName.Clear();
-                if (state.Shaders == null) return;
-
-                foreach (var shader in state.Shaders)
-                {
-                    if (shader == null || string.IsNullOrWhiteSpace(shader.ShaderName))
-                        continue;
-
-                    var runtime = GetOrCreateShaderState(shader.ShaderName);
-                    runtime.UserOverrides.Clear();
-
-                    if (shader.Overrides == null) continue;
-
-                    foreach (var entry in shader.Overrides)
-                    {
-                        if (entry == null || string.IsNullOrWhiteSpace(entry.FieldPath))
-                            continue;
-
-                        object value;
-                        try
-                        {
-                            var type = !string.IsNullOrWhiteSpace(entry.TypeName) ? Type.GetType(entry.TypeName) : null;
-                            value = type != null
-                                ? JsonConvert.DeserializeObject(entry.JsonValue, type)
-                                : JsonConvert.DeserializeObject(entry.JsonValue);
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.LogWarning($"[ShaderPackManager] Failed to deserialize override '{entry.FieldPath}' (type '{entry.TypeName ?? "unknown"}'): {ex.Message}");
-                            continue;
-                        }
-
-                        if (value != null)
-                            runtime.UserOverrides[entry.FieldPath] = value;
-                    }
-                }
+                ApplyPersistedJson(settingsFile.ReadText());
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"[ShaderPackManager] Failed to load settings: {ex.Message}");
+            }
+        }
+
+        private static void ApplyPersistedJson(string json)
+        {
+            var state = JsonConvert.DeserializeObject<PersistedPackState>(json);
+            if (state == null) return;
+
+            _selectedPackName = string.IsNullOrWhiteSpace(state.SelectedPackName) ? null : state.SelectedPackName;
+
+            _shaderStateByName.Clear();
+            if (state.Shaders == null) return;
+
+            foreach (var shader in state.Shaders)
+            {
+                if (shader == null || string.IsNullOrWhiteSpace(shader.ShaderName))
+                    continue;
+
+                var runtime = GetOrCreateShaderState(shader.ShaderName);
+                runtime.UserOverrides.Clear();
+
+                if (shader.Overrides == null) continue;
+
+                foreach (var entry in shader.Overrides)
+                {
+                    if (entry == null || string.IsNullOrWhiteSpace(entry.FieldPath))
+                        continue;
+
+                    object value;
+                    try
+                    {
+                        var type = !string.IsNullOrWhiteSpace(entry.TypeName) ? Type.GetType(entry.TypeName) : null;
+                        value = type != null
+                            ? JsonConvert.DeserializeObject(entry.JsonValue, type)
+                            : JsonConvert.DeserializeObject(entry.JsonValue);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[ShaderPackManager] Failed to deserialize override '{entry.FieldPath}' (type '{entry.TypeName ?? "unknown"}'): {ex.Message}");
+                        continue;
+                    }
+
+                    if (value != null)
+                        runtime.UserOverrides[entry.FieldPath] = value;
+                }
             }
         }
 
@@ -1433,7 +1442,7 @@ namespace shaders.Lib
                 };
 
                 var json = JsonConvert.SerializeObject(state, Formatting.Indented);
-                File.WriteAllText(_settingsFilePath, json);
+                SettingsFile.WriteText(json);
             }
             catch (Exception ex)
             {

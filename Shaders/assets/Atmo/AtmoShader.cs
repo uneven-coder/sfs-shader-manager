@@ -40,21 +40,21 @@ namespace shaders.Effects.AtmosphereShaderPack
             [ShaderArg(group: "Planet Setup", tab: "Atmosphere", exposeInUi: false)] public Vector3 PlanetCoreCenterWS;
 
             // --- Scattering ---
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_AtmosphereDensity", defaultValue: 3.4f)] public float AtmosphereDensity;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_DensityCurve", defaultValue: 1.6f)] public float DensityCurve;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_ScatterStrength", defaultValue: 0.35f)] public float ScatterStrength;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RayleighStrength", defaultValue: 1.0f)] public float RayleighStrength;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieStrength", defaultValue: 0.02f)] public float MieStrength;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieG", defaultValue: 0.76f)] public float MieAnisotropy;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RefractiveIndex", defaultValue: 1.0003f)] public float RefractiveIndex;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_AtmosphereDensity", defaultValue: 1.0f)] public float AtmosphereDensity;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_DensityCurve", defaultValue: 1.0f)] public float DensityCurve;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_ScatterStrength", defaultValue: 2.4f)] public float ScatterStrength;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RayleighStrength", defaultValue: 2.6f)] public float RayleighStrength;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieStrength", defaultValue: 11.0f)] public float MieStrength;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieG", defaultValue: 1.0f)] public float MieAnisotropy;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RefractiveIndex", defaultValue: 1.5f)] public float RefractiveIndex;
 
             // --- Lighting & Effects ---
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunDir", exposeInUi: false)] public Vector3 SunDirection;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunColor", exposeInUi: false)] public Color SunColor;
-            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_TerminatorWidth", defaultValue: 0.15f)] public float TerminatorWidth;
-            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_NightAmbientMin", defaultValue: 0.03f)] public float NightAmbientMin;
-            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunHaloExponent", defaultValue: 14f)] public float SunHaloExponent;
-            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunHaloIntensity", defaultValue: 0.12f)] public float SunHaloIntensity;
+            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_TerminatorWidth", defaultValue: 0.4f)] public float TerminatorWidth;
+            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_NightAmbientMin", defaultValue: 0.54f)] public float NightAmbientMin;
+            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunHaloExponent", defaultValue: 11.0f)] public float SunHaloExponent;
+            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunHaloIntensity", defaultValue: 11.0f)] public float SunHaloIntensity;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_GradientMultiplier", defaultValue: 1f, exposeInUi: false)] public float GradientMultiplier;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_GradientTex", exposeInUi: false)] public Texture2D GradientTexture;
 
@@ -399,13 +399,13 @@ namespace shaders.Effects.AtmosphereShaderPack
                 args.EnableClouds = true;
 
             if (!WasEdited(userOverrides, "NightAmbientMin") && args.NightAmbientMin <= 0f)
-                args.NightAmbientMin = 0.03f;
+                args.NightAmbientMin = 0.54f;
 
             if (!WasEdited(userOverrides, "SunHaloExponent") && args.SunHaloExponent <= 0f)
-                args.SunHaloExponent = 14f;
+                args.SunHaloExponent = 11.0f;
 
             if (!WasEdited(userOverrides, "SunHaloIntensity") && args.SunHaloIntensity <= 0f)
-                args.SunHaloIntensity = 0.12f;
+                args.SunHaloIntensity = 11.0f;
         }
 
         private static void SyncAtmoSharedToCloud(ref Args args)
@@ -610,6 +610,11 @@ namespace shaders.Effects.AtmosphereShaderPack
             [ShaderArg(group: "Lighting & Quality", property: "_CloudDepthFadeSoftness", defaultValue: 2000000f)] public float CloudDepthFadeSoftness;
         }
 
+        // NOTE: attribute defaultValues above stay at the shader's original tuned baseline (used
+        // for "reset to default" resolution); the actual startup defaults handed out at runtime
+        // come from CreateDefaultWorldProfile()/CreateDefaultScaledProfile() below, which are kept
+        // in sync with the user's saved settings instead.
+
         public struct Args
         {
             [ShaderArg(group: "World Clouds", property: "_PlanetRadius", defaultValue: 6371000f, exposeInUi: false)] public float PlanetRadius;
@@ -638,30 +643,30 @@ namespace shaders.Effects.AtmosphereShaderPack
         {   // World-camera defaults tuned for close-range atmosphere visuals
             return new CameraProfile
             {
-                CloudStartHeight = 3000f,
-                CloudMaxHeight = 22000f,
-                CloudScale = 0.00056f,
-                CloudThreshold = 0.6f,
+                CloudStartHeight = 0.0f,
+                CloudMaxHeight = 12200f,
+                CloudScale = 0.000175f,
+                CloudThreshold = 0.453f,
                 CloudDensity = 0.6f,
-                CloudAlpha = 1.0f,
-                CloudCoverage = 0.04f,
-                CloudType = 0.3f,
-                CloudSoftness = 0.3f,
-                CloudScrollSpeed = 100f,
+                CloudAlpha = 0.5f,
+                CloudCoverage = 0.01478f,
+                CloudType = 1.0f,
+                CloudSoftness = 1.0f,
+                CloudScrollSpeed = 111f,
                 CloudMovementDirection = new Vector3(1f, 0f, 0f),
                 CloudRotationAxis = new Vector3(5f, 0f, 1f),
-                CloudRotationSpeed = 0.009f,
+                CloudRotationSpeed = 0.0049f,
                 CloudDetailIntensity = 0.0f,
-                CloudThresholdVariation = 0.8f,
-                CloudThresholdNoiseScale = 0.00007f,
-                CloudRaymarchSteps = 36,
-                CloudLightSteps = 4,
-                CloudDepthFade = 5000000f,
-                CloudDepthFadeSoftness = 2000000f,
-                CloudLightAbsorption = 1f,
-                CloudAmbient = 0.35f,
-                CloudMultiScatter = 1.5f,
-                CloudBloom = 0.1f
+                CloudThresholdVariation = 0.6393f,
+                CloudThresholdNoiseScale = 2.3e-05f,
+                CloudRaymarchSteps = 22,
+                CloudLightSteps = 5,
+                CloudDepthFade = 67111f,
+                CloudDepthFadeSoftness = 0.0f,
+                CloudLightAbsorption = 6.0f,
+                CloudAmbient = 2.0f,
+                CloudMultiScatter = 1.0f,
+                CloudBloom = 0.8f
             };
         }
 
@@ -669,30 +674,30 @@ namespace shaders.Effects.AtmosphereShaderPack
         {   // Scaled-camera defaults tuned for distant rendering stability and readability
             return new CameraProfile
             {
-                CloudStartHeight = 3000f,
-                CloudMaxHeight = 22000f,
-                CloudScale = 0.0001f,
-                CloudThreshold = 0.92f,
-                CloudDensity = 33f,
-                CloudAlpha = 1f,
-                CloudCoverage = 0.45f,
-                CloudType = 0.0f,
-                CloudSoftness = 0.5f,
-                CloudScrollSpeed = 100f,
+                CloudStartHeight = -1000f,
+                CloudMaxHeight = 8000f,
+                CloudScale = 0.0001954f,
+                CloudThreshold = 0.3751f,
+                CloudDensity = 12.0f,
+                CloudAlpha = 11.0f,
+                CloudCoverage = 0.054f,
+                CloudType = 0.3f,
+                CloudSoftness = 11.0f,
+                CloudScrollSpeed = 111f,
                 CloudMovementDirection = new Vector3(1f, 0f, 0f),
                 CloudRotationAxis = new Vector3(5f, 0f, 1f),
-                CloudRotationSpeed = 0.009f,
+                CloudRotationSpeed = 0.01f,
                 CloudDetailIntensity = 0.0f,
                 CloudThresholdVariation = 1f,
-                CloudThresholdNoiseScale = 0.00004f,
-                CloudRaymarchSteps = 28,
-                CloudLightSteps = 4,
-                CloudDepthFade = 100000f,
-                CloudDepthFadeSoftness = 50000f,
-                CloudLightAbsorption = 0.2f,
-                CloudAmbient = 0.4f,
-                CloudMultiScatter = 5f,
-                CloudBloom = 2f
+                CloudThresholdNoiseScale = 1.7e-05f,
+                CloudRaymarchSteps = 9,
+                CloudLightSteps = 22,
+                CloudDepthFade = 3.4f,
+                CloudDepthFadeSoftness = 1.0f,
+                CloudLightAbsorption = 2.0f,
+                CloudAmbient = 3.3f,
+                CloudMultiScatter = 11.0f,
+                CloudBloom = 3.0f
             };
         }
 

@@ -22,7 +22,7 @@ namespace shaders.Effects
         [ShaderArg(property: "_FlickerAmt", defaultValue: 0.06f)] public float FlickerAmt;
         [ShaderArg(property: "_VignetteAmt", defaultValue: 0.35f)] public float VignetteAmt;
         [ShaderArg(property: "_ScanlineAmt", defaultValue: 0.06f)] public float ScanlineAmt;
-        [ShaderArg(property: "_DustChance", defaultValue: 0.0022f)] public float DustChance;
+        [ShaderArg(property: "_DustChance", defaultValue: 0.002f)] public float DustChance;
         [ShaderArg(property: "_ScratchAmt", defaultValue: 0.22f)] public float ScratchAmt;
         [ShaderArg(property: "_ScratchWidth", defaultValue: 1)] public int ScratchWidth;
         [ShaderArg(property: "_TimeSpeed", defaultValue: 0.1f)] public float TimeSpeed;
