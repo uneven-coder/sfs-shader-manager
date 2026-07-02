@@ -8,7 +8,6 @@ using UnityEngine.Events;
 using UnityEngine.UI;
 using System.Globalization;
 using System.Reflection;
-using System.Threading;
 using Newtonsoft.Json;
 using shaders.Lib;
 using shaders.Lib.ShaderModules.ShaderPack;
@@ -135,11 +134,12 @@ namespace GeneratedUI
 
         public static IReadOnlyList<UiNode> Define()
         {
-            var windowWidth = _shaderBrowserState.ConfigOnlyMode ? 1200 : 1920;
+            var windowWidth = _shaderBrowserState.ConfigOnlyMode ? 1000 : 1920;
+            var windowHeight = _shaderBrowserState.ConfigOnlyMode ? 1400 : 1200;
 
             return new List<UiNode>
             {
-                Node("element_1", UiNodeType.Window, "Window_1", windowWidth, 1200)
+                Node("element_1", UiNodeType.Window, "Window_1", windowWidth, windowHeight)
                     .At(30, 30)
                     .WithText(string.IsNullOrWhiteSpace(_shaderBrowserState.Title) ? "" : _shaderBrowserState.Title)
                     .Visual(TextAnchor.MiddleCenter, false, false, ColorText, false, "", "")
@@ -565,6 +565,22 @@ namespace GeneratedUI
 
         private static Transform? _activeParent;
         private static readonly List<GameObject> _activeRoots = [];
+        private static Window? _activeWindowElement;
+
+        /// <summary>
+        /// Updates the live root window's title text directly, without tearing down and rebuilding
+        /// the whole generated tree. Used for cheap, frequent changes (e.g. the save indicator
+        /// suffix) that would otherwise cause a full-tree rebuild — and the scroll/focus jitter
+        /// that comes with it — for a few characters of text.
+        /// </summary>
+        public static void SetWindowTitle(string title)
+        {
+            if (_activeWindowElement == null)
+                return;
+
+            try { _activeWindowElement.Title = title ?? string.Empty; }
+            catch { _activeWindowElement = null; }
+        }
 
         public enum UiNodeType
         {
@@ -626,6 +642,7 @@ namespace GeneratedUI
         {
             RemoveTrackedRoots();
             _activeParent = null;
+            _activeWindowElement = null;
         }
 
         private static void RemoveTrackedRoots()
@@ -759,6 +776,7 @@ namespace GeneratedUI
                             element = w;
                             transform = w.gameObject.transform;
                             childParent = w.ChildrenHolder;
+                            _activeWindowElement = w;
                         }
                         break;
                     }
@@ -1397,9 +1415,6 @@ namespace GeneratedUI
                 if (isExpanded)
                     TickSaveIndicator();
 
-                if (isExpanded && Interlocked.CompareExchange(ref _pendingTitleRebuild, 0, 1) == 1)
-                    QueueUiRebuild(false);
-
                 if (isOpen)
                     TryProcessPendingPackApply();
 
@@ -1446,7 +1461,6 @@ namespace GeneratedUI
         private static int _lastConfigClickPackIndex = -1;
         private static float _lastConfigClickTime;
         private static float _lastCameraInactiveRebindAt;
-        private static int _pendingTitleRebuild;
         private static float _saveIndicatorUntil;
         private static bool _pendingSearchFocusRestore;
         private static bool _committingPendingInputEdits;
@@ -1556,6 +1570,19 @@ namespace GeneratedUI
             if (_menuRoot == null)
                 return;
 
+            // The popped-out browser lives under the scene UI root, not the settings-tab parent,
+            // so "collapse to hint" (which only makes sense inside the settings tab) would build a
+            // stray hint window in the wrong place. Popout close should mirror the "Back To
+            // Settings" button instead: drop out of popout mode and fully close.
+            if (_configPopoutMode)
+            {
+                _configPopoutMode = false;
+                _shaderBrowserExpanded = false;
+                SavePersistentUiState();
+                CloseShaderBrowser();
+                return;
+            }
+
             // Escape should leave the browser in the same "collapsed hint" state that clicking
             // the category button to collapse does, not tear the whole page down to nothing.
             var parent = _menuParent != null ? _menuParent : (_menuRoot.transform != null ? _menuRoot.transform.parent : null);
@@ -1578,21 +1605,12 @@ namespace GeneratedUI
 
             _lastCameraInactiveRebindAt = now;
 
-            var activePack = ShaderPackManager.GetActivePack();
-            if (activePack != null)
-            {
-                ShaderPackManager.RebindActivePackToCameras();
-                return;
-            }
-
-            if (_selectedPackIndex < 0 || _selectedPackIndex >= _packs.Count)
-                return;
-
-            var selectedPack = _packs[_selectedPackIndex];
-            if (selectedPack == null || string.IsNullOrWhiteSpace(selectedPack.Name))
-                return;
-
-            ApplySelectedPack();
+            // Delegate entirely to ShaderPackManager's own persisted-selection restore instead of
+            // re-activating from this UI's cached _selectedPackIndex/_packs snapshot: that cache is
+            // only refreshed when the browser rebuilds, so it can drift from the manager's true
+            // state (e.g. right after a deactivate) and spuriously reactivate a pack the user just
+            // turned off, or fail to clear stale effects when nothing should be active.
+            ShaderPackManager.RebindActivePackToCameras();
         }
 
         public static void UpdateShaderProvidedArgs(string shaderName, object args)
@@ -1761,6 +1779,20 @@ namespace GeneratedUI
             {
                 _menuParent = parent;
 
+                // While popped out, the live browser lives under the scene UI root, not this
+                // settings-tab parent — DetermineCurrentlyExpanded(parent) would find nothing here
+                // and (wrongly) conclude the browser needs to collapse, tearing down the actual
+                // popout window via CloseShaderBrowser(). Leave it untouched and show a small
+                // standalone notice in the settings tab instead.
+                if (_configPopoutMode)
+                {
+                    DestroyPopoutHintPanel();
+                    _popoutHintPanel = BuildPopoutActiveHint(parent);
+                    return _popoutHintPanel;
+                }
+
+                DestroyPopoutHintPanel();
+
                 // Ask the scene what's actually live rather than blindly negating a flag: the
                 // host can enable/disable/rebuild this page in ways our own toggle never
                 // observes, so a plain "!_shaderBrowserExpanded" reliably drifts from reality.
@@ -1829,6 +1861,32 @@ namespace GeneratedUI
             }
 
             return _menuRoot;
+        }
+
+        private static GameObject? _popoutHintPanel;
+
+        private static void DestroyPopoutHintPanel()
+        {
+            if (_popoutHintPanel != null)
+                UnityEngine.Object.Destroy(_popoutHintPanel);
+            _popoutHintPanel = null;
+        }
+
+        private static GameObject BuildPopoutActiveHint(Transform parent)
+        {
+            var contentSize = ConfigurationMenu.ContentSize;
+            var width = Math.Max(360, Mathf.RoundToInt(contentSize.x * 0.9f));
+            var height = Math.Max(140, Mathf.RoundToInt(contentSize.y * 0.25f));
+
+            var panel = Builder.CreateWindow(parent, Builder.GetRandomID(), width, height, 0, 0, false, false, 0.1f, "Pack Browser");
+            panel.CreateLayoutGroup(SFS.UI.ModGUI.Type.Vertical, TextAnchor.UpperLeft, 5, new RectOffset(1, 1, 1, 1), true);
+            var textWidth = Mathf.Max(260, width - 2);
+            var hintRect = Builder.CreateLabel(panel, textWidth, 70, 0, 0, "Shader config is open in a separate popped-out window.").rectTransform;
+            var hintText = hintRect != null ? hintRect.GetComponentInChildren<Text>() : null;
+            if (hintText != null)
+                hintText.alignment = TextAnchor.UpperLeft;
+
+            return panel.gameObject;
         }
 
         private static Transform ResolvePopoutParent(Transform fallbackParent)
@@ -3130,7 +3188,7 @@ namespace GeneratedUI
 
             _saveIndicatorText = message;
             _saveIndicatorUntil = Time.unscaledTime + Math.Max(0.3f, seconds);
-            Interlocked.Exchange(ref _pendingTitleRebuild, 1);
+            ApplyWindowTitle();
         }
 
         private static void TickSaveIndicator()
@@ -3143,7 +3201,20 @@ namespace GeneratedUI
 
             _saveIndicatorText = string.Empty;
             _saveIndicatorUntil = 0f;
-            Interlocked.Exchange(ref _pendingTitleRebuild, 1);
+            ApplyWindowTitle();
+        }
+
+        // The save-indicator suffix changes far more often than the browser's actual content, so
+        // it is pushed onto the live window directly instead of going through QueueUiRebuild — a
+        // full tree rebuild (destroy + recreate every card/field, re-run scroll/focus restore) just
+        // to change a few characters of title text was the main source of visible UI jitter.
+        private static void ApplyWindowTitle()
+        {
+            if (_menuRoot == null || !_shaderBrowserExpanded)
+                return;
+
+            var suffix = string.IsNullOrWhiteSpace(_saveIndicatorText) ? string.Empty : $" - {_saveIndicatorText}";
+            GeneratedLayout.SetWindowTitle("Main Window" + suffix);
         }
 
         private static object ParseValue(string text, System.Type targetType, object fallback)
@@ -3630,7 +3701,6 @@ namespace GeneratedUI
             _shaderBrowserExpanded = false;
             _lastConfigClickPackIndex = -1;
             _lastConfigClickTime = 0f;
-            _pendingTitleRebuild = 0;
             _pendingPackApply = false;
             _nextPackApplyAt = 0f;
             _pendingScrollRestore = false;

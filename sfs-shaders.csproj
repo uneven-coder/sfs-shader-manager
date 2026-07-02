@@ -51,7 +51,7 @@
     <Reference Include="UnityEngine.UIModule"><HintPath>dependacies\UnityEngine.UIModule.dll</HintPath></Reference>
 </ItemGroup>
 
-<Target Name="CopyModToSFS" AfterTargets="Build">
+<Target Name="CopyModToSFS" AfterTargets="Build" Condition="'$(CI)' != 'true'">
     <PropertyGroup>
       <SFSModsPath>C:\Program Files (x86)\Steam\steamapps\common\Spaceflight Simulator\Spaceflight Simulator Game\Mods</SFSModsPath>
     </PropertyGroup>
