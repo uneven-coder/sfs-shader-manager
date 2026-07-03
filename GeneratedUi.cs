@@ -3412,12 +3412,13 @@ namespace GeneratedUI
                     if (!(field.GetValue(current) is System.Collections.IList list) || listIndex < 0 || listIndex >= list.Count)
                         return false;
 
-                    list[listIndex] = value;
+                    var elementType = list.GetType().IsArray ? list.GetType().GetElementType() : null;
+                    list[listIndex] = ConvertValueForField(elementType ?? value?.GetType(), value);
                     updated = current;
                     return true;
                 }
 
-                field.SetValue(current, value);
+                field.SetValue(current, ConvertValueForField(field.FieldType, value));
                 updated = current;
                 return true;
             }
@@ -3446,6 +3447,25 @@ namespace GeneratedUI
             field.SetValue(current, updatedChildValue);
             updated = current;
             return true;
+        }
+
+        private static object ConvertValueForField(System.Type fieldType, object value)
+        {   // UI edit fields box numeric input as double regardless of the target field's
+            // actual numeric type (float, int, etc.), so FieldInfo.SetValue throws unless we
+            // convert to the exact type first.
+            if (fieldType == null || value == null || fieldType.IsInstanceOfType(value))
+                return value;
+
+            if (fieldType.IsEnum && value is string enumText)
+                return System.Enum.Parse(fieldType, enumText, true);
+
+            if (typeof(IConvertible).IsAssignableFrom(fieldType) && value is IConvertible)
+            {
+                try { return System.Convert.ChangeType(value, fieldType); }
+                catch { return value; }
+            }
+
+            return value;
         }
 
         private static (string Name, int Index) ParsePathSegment(string segment)

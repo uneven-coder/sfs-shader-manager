@@ -32,6 +32,8 @@ Shader "Hidden/shaders/CloudsShader"
         _SunDir ("Sun Direction", Vector) = (0,1,0,0)
         _SunColor ("Sun Color", Color) = (1,0.95,0.9,1)
         _PlanetCenterWS ("Planet Center WS", Vector) = (0,0,0,0)
+        _CloudAtmosphereTint ("Cloud Atmosphere Tint", Range(0.0, 1.0)) = 1.0
+        _CloudRayleighStrength ("Cloud Rayleigh Strength", Float) = 1.0
     }
 
     SubShader
@@ -65,6 +67,7 @@ Shader "Hidden/shaders/CloudsShader"
             float _CloudMultiScatter, _CloudBloom, _CloudDepthFade, _CloudDepthFadeSoftness;
             float _CloudThresholdVariation, _CloudThresholdNoiseScale;
             float4 _SunDir, _SunColor;
+            float _CloudAtmosphereTint, _CloudRayleighStrength;
 
             v2f vert(appdata v)
             {
@@ -226,6 +229,45 @@ Shader "Hidden/shaders/CloudsShader"
                 return scatter * _CloudMultiScatter * exp(-lightDensity * 0.3);
             }
 
+            float3 GetRayleighSunTint(float sunAlignment)
+            {   // Mirrors Atmo.shader's CalculateSunsetGradient: wavelength^-4 Rayleigh
+                // extinction lengthens near the horizon, so direct sunlight reddens/dims the
+                // same way the sky atmosphere does instead of clouds staying a flat white/sun tint.
+                float3 wavelengths = float3(0.650, 0.532, 0.473);
+                float3 rayleigh = (1.0 / pow(wavelengths, 4.0)) * 0.02 * _CloudRayleighStrength;
+                float horizonFactor = saturate(1.0 - abs(sunAlignment));
+                float pathMultiplier = 1.0 + pow(horizonFactor, 2.0) * 20.0;
+                float3 extinction = exp(-rayleigh * pathMultiplier);
+                return lerp(float3(1,1,1), extinction, _CloudAtmosphereTint);
+            }
+
+            float3 GetSkyAmbientColor(float sunAlignment)
+            {   // Sky-dome bounce light on the clouds: blue by day, warm near the terminator,
+                // and a faint cool glow at night, instead of a fixed blue/gray ambient.
+                float3 dayColor = float3(0.5, 0.65, 0.95);
+                float3 sunsetColor = float3(0.95, 0.5, 0.28);
+                float3 nightColor = float3(0.06, 0.09, 0.16);
+
+                float dayFactor = smoothstep(-0.15, 0.25, sunAlignment);
+                float sunsetBand = smoothstep(-0.35, 0.0, sunAlignment) * smoothstep(0.4, 0.05, sunAlignment);
+
+                float3 baseColor = lerp(nightColor, dayColor, dayFactor);
+                return lerp(baseColor, sunsetColor, sunsetBand * saturate(_CloudAtmosphereTint));
+            }
+
+            float3 GetGroundAmbientColor(float sunAlignment)
+            {   // Warmer/dimmer bounce from the planet's surface, tinted the same way as the sky.
+                float3 dayColor = float3(0.32, 0.34, 0.36);
+                float3 sunsetColor = float3(0.45, 0.28, 0.18);
+                float3 nightColor = float3(0.03, 0.035, 0.05);
+
+                float dayFactor = smoothstep(-0.2, 0.2, sunAlignment);
+                float sunsetBand = smoothstep(-0.4, -0.05, sunAlignment) * smoothstep(0.3, 0.0, sunAlignment);
+
+                float3 baseColor = lerp(nightColor, dayColor, dayFactor);
+                return lerp(baseColor, sunsetColor, sunsetBand * saturate(_CloudAtmosphereTint));
+            }
+
             struct CloudResult { float3 color; float alpha; float bloom; };
 
             CloudResult RaymarchClouds(float3 rayOrigin, float3 rayDir, float3 planetCenter, float3 sunDir,
@@ -260,9 +302,10 @@ Shader "Hidden/shaders/CloudsShader"
 
                 float jitter = ditherNoise * stepSize;
                 float dayLight = smoothstep(-0.2, 0.3, sunAlignment);
-                float3 ambientSky = float3(0.5, 0.6, 0.8) * dayLight * 0.6;
-                float3 ambientGround = float3(0.3, 0.35, 0.4) * dayLight * 0.4;
-                
+                float3 tintedSunColor = _SunColor.rgb * GetRayleighSunTint(sunAlignment);
+                float3 ambientSky = GetSkyAmbientColor(sunAlignment) * dayLight * 0.6;
+                float3 ambientGround = GetGroundAmbientColor(sunAlignment) * dayLight * 0.4;
+
                 [loop] for (int i = 0; i < steps; i++)
                 {
                     if (transmittance < 0.02) break;
@@ -295,13 +338,13 @@ Shader "Hidden/shaders/CloudsShader"
                         float bottomLit = saturate(-dot(sampleNormal, sunDir)) * (1.0 - heightNorm) * 0.35 * saturate(1.0 - lightDensity * 0.3);
                         
                         float directLight = (lightTransmit + multiScatter * 0.5) * phaseVal * 1.2;
-                        float3 sunLit = _SunColor.rgb * (directLight + bottomLit);
-                        
+                        float3 sunLit = tintedSunColor * (directLight + bottomLit);
+
                         float3 ambientLit = ambientSky * skyAmbient + ambientGround * groundAmbient;
-                        ambientLit += float3(0.15, 0.17, 0.2) * _CloudAmbient * (1.0 - heightNorm) * 0.5;
+                        ambientLit += GetSkyAmbientColor(sunAlignment) * 0.15 * _CloudAmbient * (1.0 - heightNorm) * 0.5;
 
                         float edge = pow(saturate(1.0 - density * 1.5), 2.0) * lightTransmit * saturate(cosTheta + 0.4) * 0.25;
-                        float3 edgeLight = _SunColor.rgb * edge;
+                        float3 edgeLight = tintedSunColor * edge;
 
                         float3 sampleColor = sunLit + ambientLit + edgeLight;
                         sampleColor = max(sampleColor, float3(0.08, 0.09, 0.12) * _CloudAmbient);
@@ -338,7 +381,7 @@ Shader "Hidden/shaders/CloudsShader"
 
                 if (cloudResult.alpha < 0.005) discard;
 
-                float3 bloomColor = _SunColor.rgb * cloudResult.bloom * _CloudBloom;
+                float3 bloomColor = _SunColor.rgb * GetRayleighSunTint(sunAlignment) * cloudResult.bloom * _CloudBloom;
                 float3 finalColor = cloudResult.color + bloomColor;
 
                 float cloudVisibility = smoothstep(-0.35, 0.15, sunAlignment) * 0.8 + 0.2;

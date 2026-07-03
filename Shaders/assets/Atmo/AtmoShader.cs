@@ -52,7 +52,7 @@ namespace shaders.Effects.AtmosphereShaderPack
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunDir", exposeInUi: false)] public Vector3 SunDirection;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunColor", exposeInUi: false)] public Color SunColor;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_TerminatorWidth", defaultValue: 0.2f)] public float TerminatorWidth;
-            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_NightAmbientMin", defaultValue: 0.24f)] public float NightAmbientMin;
+            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_NightAmbientMin", defaultValue: 0.124f)] public float NightAmbientMin;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunHaloExponent", defaultValue: 11.0f)] public float SunHaloExponent;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunHaloIntensity", defaultValue: 11.0f)] public float SunHaloIntensity;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_GradientMultiplier", defaultValue: 1f, exposeInUi: false)] public float GradientMultiplier;
@@ -624,6 +624,8 @@ namespace shaders.Effects.AtmosphereShaderPack
             [ShaderArg(group: "Lighting & Quality", property: "_CloudLightSteps", defaultValue: 2)] public int CloudLightSteps;
             [ShaderArg(group: "Lighting & Quality", property: "_CloudDepthFade", defaultValue: 5000000f)] public float CloudDepthFade;
             [ShaderArg(group: "Lighting & Quality", property: "_CloudDepthFadeSoftness", defaultValue: 2000000f)] public float CloudDepthFadeSoftness;
+            [ShaderArg(group: "Lighting & Quality", property: "_CloudAtmosphereTint", defaultValue: 1.0f)] public float CloudAtmosphereTint;
+            [ShaderArg(group: "Lighting & Quality", property: "_CloudRayleighStrength", defaultValue: 1.0f)] public float CloudRayleighStrength;
         }
 
         // NOTE: attribute defaultValues above stay at the shader's original tuned baseline (used
@@ -661,28 +663,30 @@ namespace shaders.Effects.AtmosphereShaderPack
             {
                 CloudStartHeight = 3700f,
                 CloudMaxHeight = 12500f,
-                CloudScale = 6e-05f,
-                CloudThreshold = 0.5f,
-                CloudDensity = 11f,
-                CloudAlpha = 2f,
-                CloudCoverage = 0.23f,
-                CloudType = 1.2f,
-                CloudSoftness = 5.0f,
-                CloudScrollSpeed = 800f,
+                CloudScale = 6E-05f,
+                CloudThreshold = 0.54f,
+                CloudDensity = 22f,
+                CloudAlpha = 0.1f,
+                CloudCoverage = 0.26f,
+                CloudType = 1.27f,
+                CloudSoftness = 2f,
+                CloudScrollSpeed = 1000f,
                 CloudMovementDirection = new Vector3(1f, 0f, 0f),
                 CloudRotationAxis = new Vector3(5f, 0f, 1f),
-                CloudRotationSpeed = 0.0049f,
-                CloudDetailIntensity = 0.0f,
-                CloudThresholdVariation = 0.003f,
-                CloudThresholdNoiseScale = 2.3e-05f,
-                CloudRaymarchSteps = 10,
-                CloudLightSteps = 2,
+                CloudRotationSpeed = 0.0019f,
+                CloudDetailIntensity = 0f,
+                CloudThresholdVariation = 0.03f,
+                CloudThresholdNoiseScale = 2.1E-05f,
+                CloudRaymarchSteps = 11,
+                CloudLightSteps = 5,
                 CloudDepthFade = 67111f,
                 CloudDepthFadeSoftness = 0.0f,
-                CloudLightAbsorption = 4.0f,
-                CloudAmbient = 1.3f,
-                CloudMultiScatter = 2.4f,
-                CloudBloom = 1f
+                CloudLightAbsorption = 5f,
+                CloudAmbient = 2f,
+                CloudMultiScatter = 8f,
+                CloudBloom = 0.01f,
+                CloudAtmosphereTint = 8f,
+                CloudRayleighStrength = 1f
             };
         }
 
@@ -710,10 +714,12 @@ namespace shaders.Effects.AtmosphereShaderPack
                 CloudLightSteps = 3,
                 CloudDepthFade = 6.0f,
                 CloudDepthFadeSoftness = 0.0f,
-                CloudLightAbsorption = 1.0f,
+                CloudLightAbsorption = 4f,
                 CloudAmbient = 1.6f,
                 CloudMultiScatter = 2.0f,
-                CloudBloom = 1.0f
+                CloudBloom = 2f,
+                CloudAtmosphereTint = 4f,
+                CloudRayleighStrength = 2f
             };
         }
 
