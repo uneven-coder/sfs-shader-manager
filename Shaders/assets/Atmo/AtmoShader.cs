@@ -40,19 +40,19 @@ namespace shaders.Effects.AtmosphereShaderPack
             [ShaderArg(group: "Planet Setup", tab: "Atmosphere", exposeInUi: false)] public Vector3 PlanetCoreCenterWS;
 
             // --- Scattering ---
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_AtmosphereDensity", defaultValue: 1.0f)] public float AtmosphereDensity;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_DensityCurve", defaultValue: 1.0f)] public float DensityCurve;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_ScatterStrength", defaultValue: 2.4f)] public float ScatterStrength;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RayleighStrength", defaultValue: 2.8f)] public float RayleighStrength;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieStrength", defaultValue: 11.0f)] public float MieStrength;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieG", defaultValue: 1.0f)] public float MieAnisotropy;
-            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RefractiveIndex", defaultValue: 1.5f)] public float RefractiveIndex;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_AtmosphereDensity", defaultValue: 1.4f)] public float AtmosphereDensity;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_DensityCurve", defaultValue: 1.3f)] public float DensityCurve;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_ScatterStrength", defaultValue: 1.5f)] public float ScatterStrength;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RayleighStrength", defaultValue: 1f)] public float RayleighStrength;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieStrength", defaultValue: 55f)] public float MieStrength;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_MieG", defaultValue: 666f)] public float MieAnisotropy;
+            [ShaderArg(group: "Scattering", tab: "Atmosphere", property: "_RefractiveIndex", defaultValue: 2f)] public float RefractiveIndex;
 
             // --- Lighting & Effects ---
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunDir", exposeInUi: false)] public Vector3 SunDirection;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunColor", exposeInUi: false)] public Color SunColor;
-            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_TerminatorWidth", defaultValue: 0.4f)] public float TerminatorWidth;
-            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_NightAmbientMin", defaultValue: 0.54f)] public float NightAmbientMin;
+            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_TerminatorWidth", defaultValue: 0.2f)] public float TerminatorWidth;
+            [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_NightAmbientMin", defaultValue: 0.24f)] public float NightAmbientMin;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunHaloExponent", defaultValue: 11.0f)] public float SunHaloExponent;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_SunHaloIntensity", defaultValue: 11.0f)] public float SunHaloIntensity;
             [ShaderArg(group: "Lighting & Effects", tab: "Atmosphere", property: "_GradientMultiplier", defaultValue: 1f, exposeInUi: false)] public float GradientMultiplier;
@@ -663,8 +663,8 @@ namespace shaders.Effects.AtmosphereShaderPack
                 CloudMaxHeight = 12500f,
                 CloudScale = 6e-05f,
                 CloudThreshold = 0.5f,
-                CloudDensity = 122.0f,
-                CloudAlpha = 0.2f,
+                CloudDensity = 11f,
+                CloudAlpha = 2f,
                 CloudCoverage = 0.23f,
                 CloudType = 1.2f,
                 CloudSoftness = 5.0f,
@@ -680,9 +680,9 @@ namespace shaders.Effects.AtmosphereShaderPack
                 CloudDepthFade = 67111f,
                 CloudDepthFadeSoftness = 0.0f,
                 CloudLightAbsorption = 4.0f,
-                CloudAmbient = 1.45f,
+                CloudAmbient = 1.3f,
                 CloudMultiScatter = 2.4f,
-                CloudBloom = 1.0f
+                CloudBloom = 1f
             };
         }
 
